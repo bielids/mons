@@ -2,8 +2,6 @@
 # Config monitors for laptop + DisplayPort MST setups 
 # Usage:
 #
-## mons -a 1,3,2 -e 2 -p 1 -l on
-## mons --arrangement 1,3,2 --enabled-mons 2 --laptop on
 
 printUsage() {
     echo -e "USAGE:"
@@ -11,11 +9,16 @@ printUsage() {
     echo -e "\t-p/--primary: primary display number (used for audio) [int]"
     echo -e "\t-l/--laptop: laptop screen on or off (ex: on or off) [str]"
     echo -e "\t-e/--enabled-mons: how many enable to monitors starting from the left [int]"
-    echo -e "\nExample: mons --arrangement 1,3,2 --enabled-mons 2 --laptop on --primary 1"
+    echo -e "\t-s/--scale: scaling factor used for external monitors [float]"
+    echo -e "\nExample: mons --arrangement 1,3,2 --enabled-mons 2 --laptop on --primary 1 --scale 1.33"
+}
+
+round() {
+    echo ${1} | awk '{printf("%d\n",$1 + 0.5)}'
 }
 
 # gather args
-args=$(getopt -l "arrangement:,laptop:,enabled:,primary:,debug,help" -o "a:l:e:p:hd" -- "$@")
+args=$(getopt -l "arrangement:,laptop:,enabled:,primary:,scale:,debug,help" -o "a:l:e:p:s:hd" -- "$@")
 
 #if ! [ $(eval set -- "$args") ] ; then
 #    printUsage
@@ -45,6 +48,11 @@ while [ $# -ge 1 ]; do
                         primary="$2"
                         shift
                         ;;
+                -s|--scale)
+                        echo $2
+                        scale="$2"
+                        shift
+                        ;;
                 -d|--debug)
                         debug=1
                         shift
@@ -63,17 +71,21 @@ debug() {
     fi
 }
 
-if [[ ! "${arrangement}" ]] || [[ ! "${laptop}" ]] ||[[ ! "${enabled}" ]] ||[[ ! "${primary}" ]]; then
+if [[ ! "${arrangement}" ]] || [[ ! "${laptop}" ]] || [[ ! "${enabled}" ]] || [[ ! "${primary}" ]]; then
     printUsage
     exit 1
 fi
 
+xrandr=$(xrandr)
+
 laptopDP='eDP-1'
-for monitor in $(xrandr | grep ' conn' | grep -iv "${laptopDP}" | awk '{print $1}' | sort); do
+for monitor in $(echo "${xrandr}" | grep -E '.*connected\s[0-9]|\sconn' | grep -iv "${laptopDP}" | awk '{print $1}' | sort); do
     monitors+=("${monitor}")
 done
+echo $monitors
 
 debug "Monitor arrangenent: $(if [[ ${laptop} == "on" ]]; then printf "${laptopDP} "; fi)$(IFS=','; for id in ${arrangement}; do printf "${monitors[$((${id} -1))]} "; done)"
+
 count=0
 
 debug "Starting loop"
@@ -83,8 +95,9 @@ for id in ${arrangement}; do
         disable=1
     fi
     (( count++ ))
-    if [[ ! ${prev} ]]; then
+    if [[ ! ${prev} ]] && [[ ! ${laptop_set} ]]; then
         debug "No previous display set, setting laptop display options"
+        mon_res=$(echo ${xrandr} | grep ${laptopDP} -A1 | tail -n1 | awk '{print $1}' | cut -d'x' -f1)
         cmd="xrandr --output ${laptopDP}"
         if [[ ${laptop} == "on" ]]; then
             debug "Laptop mode set to auto"
@@ -99,14 +112,17 @@ for id in ${arrangement}; do
         if [[ ${enabled} -eq 0 ]]; then
             debug "No other displays enabled, setting laptop to primary"
             cmd+=" --primary"
-#            break
         fi
+        current_pos=$(( current_pos + mon_res ))
+        debug "${current_pos}"
+        laptop_set=1
     fi
     if [[ ${id} -gt ${#monitors[@]} ]]; then
-        echo "skipping monitor ${id} because only ${#monitors[@]} monitors found"
+        debug "skipping monitor ${id} because only ${#monitors[@]} monitors found"
         continue
     fi
     monitor_name=${monitors[$((${id} -1))]}
+    mon_res=$(echo ${xrandr} | grep ${monitor_name} -A1 | tail -n1 | awk '{print $1}' | cut -d'x' -f1)
     debug "Setting options for monitor ${monitor_name}"
     if [[ ${id} -eq ${primary} ]] && [[ ! ${disable} ]]; then
         debug "${monitor_name} set as primary display"
@@ -114,20 +130,33 @@ for id in ${arrangement}; do
     else
         cmd+=" --output ${monitor_name}"
     fi
-    if [[ ${prev} ]]; then
-        debug "Found previously set display, setting ${monitor_name} to the right of ${monitors[$((${prev} - 1))]}"
-        cmd+=" --right-of ${monitors[$((${prev} - 1))]}"
-    elif [[ ${laptop} -eq "on" ]]; then
-        debug "Previous display was laptop display, setting ${monitor_name} to the right of ${laptopDP}"
-        cmd+=" --right-of ${laptopDP}"
+## Not needed since I use --pos now
+###########################
+##    if [[ ${prev} ]]; then
+##        debug "Found previously set display, setting ${monitor_name} to the right of ${monitors[$((${prev} - 1))]}"
+##        cmd+=" --right-of ${monitors[$((${prev} - 1))]}"
+##    elif [[ ${laptop} -eq "on" ]]; then
+##        debug "Previous display was laptop display, setting ${monitor_name} to the right of ${laptopDP}"
+##        cmd+=" --right-of ${laptopDP}"
+##    fi
+###########################
+    if [[ ! ${scale} ]]; then
+        scale=1
     fi
     if [[ ! ${disable} ]]; then
         debug "${monitor_name} set to auto mode"
         cmd+=" --auto"
+        cmd+=" --scale ${scale}x${scale}"
+        cmd+=" --pos ${current_pos}x0"
     else
         debug "${monitor_name} set to off mode"
         cmd+=" --off"
     fi
+    scaled_res=$(round $(echo "${mon_res} * ${scale}" | bc))
+    debug "Current position: ${current_pos}"
+    debug "Scaled resolution: $(round ${scaled_res})"
+    current_pos=$(echo "${current_pos} + ${scaled_res}" | bc)
+    debug "New position: ${current_pos}"
     prev=${id}
 done
 
