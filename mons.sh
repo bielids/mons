@@ -49,7 +49,6 @@ while [ $# -ge 1 ]; do
                         shift
                         ;;
                 -s|--scale)
-                        echo $2
                         scale="$2"
                         shift
                         ;;
@@ -82,7 +81,6 @@ laptopDP='eDP-1'
 for monitor in $(echo "${xrandr}" | grep -E '.*connected\s[0-9]|\sconn' | grep -iv "${laptopDP}" | awk '{print $1}' | sort); do
     monitors+=("${monitor}")
 done
-echo $monitors
 
 debug "Monitor arrangenent: $(if [[ ${laptop} == "on" ]]; then printf "${laptopDP} "; fi)$(IFS=','; for id in ${arrangement}; do printf "${monitors[$((${id} -1))]} "; done)"
 
@@ -163,4 +161,4 @@ done
 # run the command
 echo "RUNNING ${cmd}"
 printf "Press ENTER to continue"; read
-eval "${cmd}" 
+eval "${cmd}"
