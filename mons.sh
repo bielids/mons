@@ -112,7 +112,6 @@ for id in ${arrangement}; do
             cmd+=" --primary"
         fi
         current_pos=$(( current_pos + mon_res ))
-        debug "${current_pos}"
         laptop_set=1
     fi
     if [[ ${id} -gt ${#monitors[@]} ]]; then
@@ -128,16 +127,6 @@ for id in ${arrangement}; do
     else
         cmd+=" --output ${monitor_name}"
     fi
-## Not needed since I use --pos now
-###########################
-##    if [[ ${prev} ]]; then
-##        debug "Found previously set display, setting ${monitor_name} to the right of ${monitors[$((${prev} - 1))]}"
-##        cmd+=" --right-of ${monitors[$((${prev} - 1))]}"
-##    elif [[ ${laptop} -eq "on" ]]; then
-##        debug "Previous display was laptop display, setting ${monitor_name} to the right of ${laptopDP}"
-##        cmd+=" --right-of ${laptopDP}"
-##    fi
-###########################
     if [[ ! ${scale} ]]; then
         scale=1
     fi
